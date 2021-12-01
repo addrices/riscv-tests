@@ -39,6 +39,11 @@ RISCV_GCC ?= $(RISCV_PREFIX)gcc
 RISCV_GCC_OPTS ?= -static -mcmodel=medany -fvisibility=hidden -nostdlib -nostartfiles
 RISCV_OBJDUMP ?= $(RISCV_PREFIX)objdump --disassemble-all --disassemble-zeroes --section=.text --section=.text.startup --section=.text.init --section=.data
 RISCV_SIM ?= spike
+RISCV_OBJCOPY ?= $(RISCV_PREFIX)objcopy -O verilog
+RISCV_HEXGEN ?= 'BEGIN{output=0;}{ gsub("\r","",$$(NF)); if ($$1~/@/) {if ($$1 ~/@80000000/) {output=code;} else {output=1-code;}; gsub("@","0x",$$1); addr=strtonum($$1); if (output==1){printf "@%08x\n",(addr%262144)/4;}} else {if (output==1) {for(i=1;i<NF;i+=4) print $$(i+3)$$(i+2)$$(i+1)$$i;}}}'
+
+RISCV_MIFGEN ?= 'BEGIN{printf "WIDTH=32;\nDEPTH=%d;\n\nADDRESS_RADIX=HEX;\nDATA_RADIX=HEX;\n\nCONTENT BEGIN\n",depth; addr=0;} { gsub("\r","",$$(NF)); if ($$1 ~/@/) {gsub("@","0x",$$1);addr=strtonum($$1);} else {printf "%04X : %s;\n",addr, $$1; addr=addr+1;}} END{print "END\n";}'
+
 
 vpath %.S $(src_dir)
 
@@ -47,6 +52,11 @@ vpath %.S $(src_dir)
 
 %.dump: %
 	$(RISCV_OBJDUMP) $< > $@
+	$(RISCV_OBJCOPY) $< $<.tmp
+	awk -v code=1 $(RISCV_HEXGEN) $<.tmp > $<.hex
+	awk -v code=0 $(RISCV_HEXGEN) $<.tmp > $<_d.hex
+	awk -v depth=65536 $(RISCV_MIFGEN) $<.hex > $<.mif
+	awk -v depth=32768 $(RISCV_MIFGEN) $<_d.hex > $<_d.mif
 
 %.out: %
 	$(RISCV_SIM) --isa=rv64gc $< 2> $@
